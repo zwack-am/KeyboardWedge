@@ -5,6 +5,7 @@
 #include <deprecated.h>
 #include <SPI.h>
 #include <Keyboard.h>
+#include <Adafruit_DotStar.h>
 
 /*
  * --------------------------------------------------------------------------------------------------------------------
@@ -39,10 +40,19 @@ byte header[] = "ZPKW";
 // Define the Trinket pins, these are Configurable, but the Trinket doesn't have any spare pins.
 #define RST_PIN   1
 #define SS_PIN    0
+#define NUMPIXELS 1
+#define DATAPIN   7
+#define CLOCKPIN  8
+#define LED_PIN   13
 
 // Create MFRC522 instance
 MFRC522 mfrc522(SS_PIN, RST_PIN);   
 MFRC522::MIFARE_Key key;
+
+long pixelHue = 0L;
+
+// Create DotStar instance
+Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BRG);
 
 void getPassword(uint8_t blocks, uint8_t blockLength) {
   
@@ -118,11 +128,22 @@ void setup() {
 
   // Initialise the MFRC522 Card Reader
   mfrc522.PCD_Init();
+
+  // Initialise the dotstar
+  strip.begin();
+  strip.setBrightness(80);
+  strip.show();
 }
 
 void loop() {
 
-  //Define some variables
+  // Have the dotstar cycle through the rainbow, slowly
+  pixelHue = (pixelHue + 512) % 655536;
+  strip.setPixelColor(0, strip.gamma32(strip.ColorHSV(pixelHue)));
+  strip.show();
+  
+
+  //Define some variables;
   byte blocks;
   byte blocklength;
   MFRC522::PICC_Type cardName; 
