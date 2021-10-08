@@ -57,11 +57,141 @@ byte header[] = "ZPKW";
 MFRC522 mfrc522(SS_PIN, RST_PIN);   
 MFRC522::MIFARE_Key key;
 
-long pixelHue = 0L;
-
 // Create DotStar instance
-Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BRG);
+Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BGR);
 
+
+int getUIDPassword(MFRC522::Uid uid) {
+  uint8_t entry = 0;
+  uint8_t pwLength;
+
+  char hexDigits[] = "0123456789ABCDEF"; 
+  // Convert the uid into a Hex String
+  char UIDString[(uid.size * 2) + 1 ];
+  for (uint8_t ch ; ch < uid.size ; ch ++)
+  {
+    UIDString[(ch * 2)] = hexDigits[uid.uidByte[ch]/16];
+    UIDString[(ch *2) + 1] = hexDigits[uid.uidByte[ch]%16];
+  }
+  UIDString[uid.size * 2] = '\0';
+  
+  while ( UIDPassword[entry][0] != NULL ) 
+  {
+    
+    if (strcmp(UIDString, UIDPassword[entry][0]) == 0)
+    {
+      // Set the Dotstar to Blue 
+      strip.setPixelColor(0, 0, 0, 255);
+      strip.show();
+      pwLength = strlen(UIDPassword[entry][1]);
+      Keyboard.begin();
+      for (uint8_t i = 0; i < pwLength ; i++)  
+        Keyboard.write(UIDPassword[entry][1][i]);
+      Keyboard.write(KEY_RETURN);
+      Keyboard.end();
+      return(true);
+    }
+    entry++;
+  }
+  return(false);  
+}
+
+int getPassword(uint8_t blocks, uint8_t blockLength) {
+  
+  // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+  for (uint8_t i = 0; i < 6; i++) {
+    key.keyByte[i] = 0xFF;
+  }
+
+  //some variables we need
+  uint8_t block;
+  uint8_t bufferSize;
+  bool password, passwordFound;
+  MFRC522::StatusCode status;
+
+  bufferSize = blockLength + 2;
+  uint8_t buffer[bufferSize];
+
+  password = false;
+  passwordFound = false;
+
+  for (block = 1; block <= blocks; block++) 
+  {
+
+    // Authenticate
+    status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
+    if (status != MFRC522::STATUS_OK)
+    {
+      return(false);
+    }
+
+    // Read block
+    status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
+    if (status != MFRC522::STATUS_OK) 
+    {
+      return(false);
+    }  
+
+    // Check data and output the password
+    for (uint8_t i = 0; i < blockLength; i++) 
+    {
+         
+      if (buffer[i] == header[0] && buffer[i+1] == header[1] && 
+        buffer[i+2] == header[2] && buffer[i+3] == header[3])
+      {
+        // We found the password header
+        // Set the Dotstar to Green 
+        strip.setPixelColor(0, 0, 255, 0);
+        strip.show();
+
+        // Now get ready to start typing
+        Keyboard.begin();
+        password = true;
+        passwordFound = true;
+        i+=3;
+      }
+      else if (buffer[i] == 0 && password == true)
+      {
+        // We found the NULL character at the end of the password, type return.
+        password = false;
+        Keyboard.write(KEY_RETURN);
+        Keyboard.end();
+      }
+      else
+      {
+        // Otherwise we either ignore the character (we are not in the password block) or type it (we are)
+        if (password == true)
+        { 
+          // We are in the password block so send the password keystroke.
+          Keyboard.write(buffer[i]);
+        }
+      }
+    }
+  }
+  return(passwordFound);
+}
+
+int getUID(MFRC522::Uid uid) {
+  uint8_t pwLength;
+  char hexDigits[] = "0123456789ABCDEF"; 
+
+  // Set the DotStar to Red
+  strip.setPixelColor(0, 255, 0, 0);
+  strip.show();
+
+  Keyboard.begin();
+    
+  // Convert the uid into a Hex String
+  for (uint8_t ch ; ch < uid.size ; ch ++)
+  {
+    Keyboard.write(hexDigits[uid.uidByte[ch]/16]);
+    Keyboard.write(hexDigits[uid.uidByte[ch]%16]);
+  }
+
+  Keyboard.write(KEY_RETURN);
+  Keyboard.end();
+  return(true);
+}
 void setup() {
 
   // Initialiase the SPI bus
@@ -73,15 +203,15 @@ void setup() {
   // Initialise the dotstar
   strip.begin();
   strip.setBrightness(80);
+  strip.setPixelColor(0, 255, 255, 255);
   strip.show();
 
 }
 
 void loop() {
 
-  // Have the dotstar cycle through the rainbow, slowly
-  pixelHue = (pixelHue + 512) % 655536;
-  strip.setPixelColor(0, strip.gamma32(strip.ColorHSV(pixelHue)));
+  // Have the dotstar set to white
+  strip.setPixelColor(0, 255, 255, 255);
   strip.show();
   
 
@@ -139,10 +269,12 @@ void loop() {
         return;
     }
     // See if the uid is in our password array
-    if (! getUIDPassword(mfrc522.uid))
+    if ( ! getUIDPassword(mfrc522.uid))
     {
-      // Look for a password on the card
-      getPassword(blocks, blocklength);
+      if ( ! getPassword(blocks, blocklength))
+      {
+        getUID(mfrc522.uid);
+      }
     }
   }
 
@@ -152,105 +284,5 @@ void loop() {
   // Close the card reader 
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
-
 }
-
-int getUIDPassword(MFRC522::Uid uid)
-{
-  uint8_t entry = 0;
-  uint8_t pwLength;
-
-  char hexDigits[] = "0123456789ABCDEF"; 
-  // Convert the uid into a Hex String
-  char UIDString[(uid.size * 2) + 1 ];
-  for (uint8_t ch ; ch < uid.size ; ch ++)
-  {
-    UIDString[(ch * 2)] = hexDigits[uid.uidByte[ch]/16];
-    UIDString[(ch *2) + 1] = hexDigits[uid.uidByte[ch]%16];
-  }
-  UIDString[uid.size * 2] = '\0';
   
-  while ( UIDPassword[entry][0] != NULL ) 
-  {
-    
-    if (strcmp(UIDString, UIDPassword[entry][0]) == 0)
-    {
-      pwLength = strlen(UIDPassword[entry][1]);
-      Keyboard.begin();
-      for (uint8_t i = 0; i < pwLength ; i++)  
-        Keyboard.write(UIDPassword[entry][1][i]);
-      Keyboard.write(KEY_RETURN);
-      Keyboard.end();
-      return(true);
-    }
-    entry++;
-  }
-  return(false);  
-}
-
-void getPassword(uint8_t blocks, uint8_t blockLength) {
-  
-  // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
-  for (uint8_t i = 0; i < 6; i++) {
-    key.keyByte[i] = 0xFF;
-  }
-
-  //some variables we need
-  uint8_t block;
-  uint8_t bufferSize;
-  bool password;
-  MFRC522::StatusCode status;
-
-  bufferSize = blockLength + 2;
-  uint8_t buffer[bufferSize];
-
-  password == false;
-
-  for (block = 1; block <= blocks; block++) 
-  {
-
-    // Authenticate
-    status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
-    if (status != MFRC522::STATUS_OK)
-    {
-      return;
-    }
-
-    // Read block
-    status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
-    if (status != MFRC522::STATUS_OK) 
-    {
-      return;
-    }
-
-    // Check data and output the password
-    for (uint8_t i = 0; i < blockLength; i++) 
-    {
-         
-      if (buffer[i] == header[0] && buffer[i+1] == header[1] && 
-        buffer[i+2] == header[2] && buffer[i+3] == header[3])
-      {
-        // We found the password header, get ready to start typing
-        Keyboard.begin();
-        password = true;
-        i+=3;
-      }
-      else if (buffer[i] == 0 && password == true)
-      {
-        // We found the NULL character at the end of the password, type return.
-        password = false;
-        Keyboard.write(KEY_RETURN);
-        Keyboard.end();
-      }
-      else
-      {
-        // Otherwise we either ignore the character (we are not in the password block) or type it (we are)
-        if (password == true)
-        { 
-          // We are in the password block so send the password keystroke.
-          Keyboard.write(buffer[i]);
-        }
-      }
-    }
-  }
-}
