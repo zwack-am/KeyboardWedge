@@ -114,57 +114,60 @@ int getPassword(uint8_t blocks, uint8_t blockLength) {
   uint8_t buffer[bufferSize];
 
   password = false;
-
-  for (block = 1; block <= blocks; block++) 
+  
+  for (byte count = 0; count < 3; count++)
   {
-
-    // Authenticate
-    status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
-    if (status != MFRC522::STATUS_OK)
+    for (block = 1; block <= blocks; block++) 
     {
-      return(false);
-    }
 
-    // Read block
-    status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
-    if (status != MFRC522::STATUS_OK) 
-    {
-      return(false);
-    }  
+      // Authenticate
+      status = mfrc522.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, block, &key, &(mfrc522.uid)); //line 834 of MFRC522.cpp file
+      if (status != MFRC522::STATUS_OK)
+      {
+        return(false);
+      }
 
-    // Check data and output the password
-    for (uint8_t i = 0; i < blockLength; i++) 
-    {
+      // Read block
+      status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
+      if (status != MFRC522::STATUS_OK) 
+      {
+        return(false);
+      }  
+
+      // Check data and output the password
+      for (uint8_t i = 0; i < blockLength; i++) 
+      {
          
-      if (buffer[i] == header[0] && buffer[i+1] == header[1] && 
-        buffer[i+2] == header[2] && buffer[i+3] == header[3])
-      {
-        // We found the password header
-        // Set the Dotstar to Green 
-        strip.setPixelColor(0, 0, 255, 0);
-        strip.show();
+        if (buffer[i] == header[0] && buffer[i+1] == header[1] && 
+          buffer[i+2] == header[2] && buffer[i+3] == header[3])
+        {
+          // We found the password header
+          // Set the Dotstar to Green 
+          strip.setPixelColor(0, 0, 255, 0);
+          strip.show();
 
-        // Now get ready to start typing
-        Keyboard.begin();
-        password = true;
-        i+=3;
-      }
-      else if (buffer[i] == 0 && password == true)
-      {
-        // We found the NULL character at the end of the password, type return.
-        password = false;
-        Keyboard.write(KEY_RETURN);
-        Keyboard.end();
-        delay(1000);
-        return(true);
-      }
-      else
-      {
-        // Otherwise we either ignore the character (we are not in the password block) or type it (we are)
-        if (password == true)
-        { 
-          // We are in the password block so send the password keystroke.
-          Keyboard.write(buffer[i]);
+          // Now get ready to start typing
+          Keyboard.begin();
+          password = true;
+          i+=3;
+        }
+        else if (buffer[i] == 0 && password == true)
+        {
+          // We found the NULL character at the end of the password, type return.
+          password = false;
+          Keyboard.write(KEY_RETURN);
+          Keyboard.end();
+          delay(1000);
+          return(true);
+        }
+        else
+        {
+          // Otherwise we either ignore the character (we are not in the password block) or type it (we are)
+          if (password == true)
+          { 
+            // We are in the password block so send the password keystroke.
+            Keyboard.write(buffer[i]);
+          }
         }
       }
     }
@@ -202,7 +205,7 @@ void setup() {
 
   // Initialise the MFRC522 Card Reader
   mfrc522.PCD_Init();
-  mfrc522.PCD_WriteRegister(MFRC522::RFCfgReg, MFRC522::RxGain_max);
+  mfrc522.PCD_WriteRegister(MFRC522::RFCfgReg, MFRC522::RxGain_avg);
 
   // Initialise the dotstar
   strip.begin();
