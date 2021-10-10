@@ -89,6 +89,7 @@ int getUIDPassword(MFRC522::Uid uid) {
         Keyboard.write(UIDPassword[entry][1][i]);
       Keyboard.write(KEY_RETURN);
       Keyboard.end();
+      delay(1000);
       return(true);
     }
     entry++;
@@ -106,14 +107,13 @@ int getPassword(uint8_t blocks, uint8_t blockLength) {
   //some variables we need
   uint8_t block;
   uint8_t bufferSize;
-  bool password, passwordFound;
+  bool password;
   MFRC522::StatusCode status;
 
   bufferSize = blockLength + 2;
   uint8_t buffer[bufferSize];
 
   password = false;
-  passwordFound = false;
 
   for (block = 1; block <= blocks; block++) 
   {
@@ -147,7 +147,6 @@ int getPassword(uint8_t blocks, uint8_t blockLength) {
         // Now get ready to start typing
         Keyboard.begin();
         password = true;
-        passwordFound = true;
         i+=3;
       }
       else if (buffer[i] == 0 && password == true)
@@ -156,6 +155,8 @@ int getPassword(uint8_t blocks, uint8_t blockLength) {
         password = false;
         Keyboard.write(KEY_RETURN);
         Keyboard.end();
+        delay(1000);
+        return(true);
       }
       else
       {
@@ -168,7 +169,7 @@ int getPassword(uint8_t blocks, uint8_t blockLength) {
       }
     }
   }
-  return(passwordFound);
+  return(false);
 }
 
 int getUID(MFRC522::Uid uid) {
@@ -190,6 +191,7 @@ int getUID(MFRC522::Uid uid) {
 
   Keyboard.write(KEY_RETURN);
   Keyboard.end();
+  delay(1000);
   return(true);
 }
 
@@ -200,6 +202,7 @@ void setup() {
 
   // Initialise the MFRC522 Card Reader
   mfrc522.PCD_Init();
+  mfrc522.PCD_WriteRegister(MFRC522::RFCfgReg, MFRC522::RxGain_max);
 
   // Initialise the dotstar
   strip.begin();
@@ -278,9 +281,6 @@ void loop() {
       }
     }
   }
-
-  // Pause for a second.  Change this value in milliseconds if you wish to change it
-  delay(1000);
 
   // Close the card reader 
   mfrc522.PICC_HaltA();
