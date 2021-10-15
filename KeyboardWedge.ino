@@ -99,16 +99,17 @@ int getUIDPassword(MFRC522::Uid uid) {
 
 int getPassword(uint8_t blocks, uint8_t blockLength) {
   
-  // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
-  for (uint8_t i = 0; i < 6; i++) {
-    key.keyByte[i] = 0xFF;
-  }
-
   //some variables we need
   uint8_t block;
   uint8_t bufferSize;
   bool password;
   MFRC522::StatusCode status;
+
+  // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+  for (uint8_t i = 0; i < 6; i++) {
+    key.keyByte[i] = 0xFF;
+  }
+
 
   bufferSize = blockLength + 2;
   uint8_t buffer[bufferSize];
@@ -251,6 +252,46 @@ void loop() {
         // The Mifare Ultralight has 16 blocks of 4 bytes each.
         blocks=15;
         blocklength=4;
+        // If this is an NTAG21[356] it will show up here, the UID will be 7 characters
+        // and the first UID byte will be 04h
+        if (mfrc522.uid.uidByte[0] == 04 && mfrc522.uid.size == 7)
+        {
+
+          // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+          for (uint8_t i = 0; i < 6; i++) {
+            key.keyByte[i] = 0xFF;
+          }
+          uint8_t bufferSize = 18;
+          uint8_t buffer[bufferSize];
+          uint8_t block=3;
+          MFRC522::StatusCode status;
+
+          // Read block
+          status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
+          if (status != MFRC522::STATUS_OK) 
+          {
+            return;
+          }
+
+          switch (buffer[2])
+          {
+            case 0x12:
+              // NTAG213
+              blocks=43;
+              break;
+            case 0x3E:
+              // NTAG215
+              blocks=133;
+              break;
+            case 0x6D:
+              // NTAG216
+              blocks=229;
+              break;
+            default:
+              //Unknown NXP tag
+              return;
+          }
+        }
         break;
 //      case MFRC522::PICC_TYPE_MIFARE_UL_C:
 //        // The Mifare Ultralight C has 48 blocks of 4 bytes each.
