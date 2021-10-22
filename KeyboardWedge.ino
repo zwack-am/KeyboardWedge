@@ -31,11 +31,11 @@
  * wedge was a keyboard followed by the Enter key.
  * 
  * Currently the following NFC card types are supported:
- * 
  */
 
+
 // Create the UIDPassword Array
-char * UIDPassword[][2] = { 
+char * UIDPassword[][2] = {
   { "DEADBEEF", "Password1"}, 
   { "UID2", "Password2"}, 
   { "UID3", "Password3"},
@@ -51,7 +51,6 @@ byte header[] = "ZPKW";
 #define NUMPIXELS 1
 #define DATAPIN   7
 #define CLOCKPIN  8
-#define LED_PIN   13
 
 // Create MFRC522 instance
 MFRC522 mfrc522(SS_PIN, RST_PIN);   
@@ -60,6 +59,58 @@ MFRC522::MIFARE_Key key;
 // Create DotStar instance
 Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BGR);
 
+// Some strings
+
+String password, confirm;
+
+void setPassword() {
+  // Turn the red led on
+  digitalWrite(LED_BUILTIN, HIGH);
+  
+  // Clear the Serial buffer
+  if (Serial.available() > 0)
+  {
+    Serial.readString();
+  }
+  
+  // Get the password
+  Serial.println("Please enter the new password");
+  Serial.setTimeout(100000);
+  password = Serial.readStringUntil('\n');
+  Serial.setTimeout(1000);
+  // Get the password again to compare it.
+  Serial.println("Please enter the password again");
+  Serial.setTimeout(100000);
+  confirm = Serial.readStringUntil('\n');
+  Serial.setTimeout(1000);
+
+  // Compare the two
+  if (password == confirm)
+  {
+      
+
+  // Get them to place the chip on the antenna
+
+  // Search the chip for space to write the password
+
+  // Write the password to the chip
+
+  // Read the password
+  
+  }
+  else
+  {
+    Serial.println("Passwords don't match");
+  }
+
+  // Output some instructions for next time.
+  Serial.println();
+  Serial.println("Enter '1' in order to program a new password onto a chip.");
+  Serial.println();
+  
+  // Turn the red led off
+  digitalWrite(LED_BUILTIN, LOW);
+}
 
 int getUIDPassword(MFRC522::Uid uid) {
   uint8_t entry = 0;
@@ -214,7 +265,24 @@ void setup() {
   strip.setPixelColor(0, 255, 255, 255);
   strip.show();
 
+  // Initialise the RED LED (for write mode)
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+
+  // Initialse the Serial console
+  Serial.begin(9600);
+  
+  // Give the serial console a chance to become ready.
+  delay(3000);
+  
+  // Output some instructions to the serialconsole.
+  Serial.println();
+  Serial.println("Enter '1' in order to program a new password onto a chip.");
+  Serial.println();
+
 }
+
+char rxByte = 0;
 
 void loop() {
 
@@ -227,6 +295,18 @@ void loop() {
   byte blocks;
   byte blocklength;
   MFRC522::PICC_Type cardName; 
+
+  // Check the serial console for input
+  if (Serial.available() > 0)
+  {
+     // if we got a 1 jump to the set password routine
+     rxByte = Serial.read();
+
+     if (rxByte == '1')
+     {
+        setPassword();
+     }
+  }
  
   // Look for new cards, and select one if present
   if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
