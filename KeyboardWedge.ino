@@ -66,6 +66,10 @@ String password, confirm;
 void setPassword() {
   // Turn the red led on
   digitalWrite(LED_BUILTIN, HIGH);
+
+  // Set the Dotstar to yellow 
+  strip.setPixelColor(0, 255, 255, 0);
+  strip.show();
   
   // Clear the Serial buffer
   if (Serial.available() > 0)
