@@ -55,15 +55,172 @@ byte header[] = "ZPKW";
 // Create MFRC522 instance
 MFRC522 mfrc522(SS_PIN, RST_PIN);   
 MFRC522::MIFARE_Key key;
+MFRC522::PICC_Type cardName; 
 
 // Create DotStar instance
 Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BGR);
 
-// Some strings
-
+// Some variables
+byte blocks;
+byte blocklength;
 String password, confirm;
 
-void setPassword() {
+void setup() {
+
+  // Initialiase the SPI bus
+  SPI.begin();
+
+  // Initialise the MFRC522 Card Reader
+  mfrc522.PCD_Init();
+  mfrc522.PCD_WriteRegister(MFRC522::RFCfgReg, MFRC522::RxGain_48dB);
+
+  // Initialise the dotstar
+  strip.begin();
+  strip.setBrightness(80);
+  strip.setPixelColor(0, 255, 255, 255);
+  strip.show();
+
+  // Initialise the RED LED (for write mode)
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+
+  // Initialise the Serial console
+  Serial.begin(9600);
+  
+  // Give the serial console a chance to become ready.
+  delay(3000);
+  
+  // Output some instructions to the serialconsole.
+  Serial.println();
+  Serial.println("Enter '1' in order to program a new password onto a chip.");
+  Serial.println();
+
+}
+
+char rxByte = 0;
+
+void loop() {
+
+  // Have the dotstar set to white
+  strip.setPixelColor(0, 255, 255, 255);
+  strip.show();
+  
+  // Check the serial console for input
+  if (Serial.available() > 0)
+  {
+     // if we got a 1 jump to the set password routine
+     rxByte = Serial.read();
+
+     if (rxByte == '1')
+     {
+        setPassword();
+     }
+  }
+ 
+  // Look for new cards, and select one if present
+  if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
+    // Get the card type 
+    cardName = mfrc522.PICC_GetType(mfrc522.uid.sak);
+    // Select the Card info
+    switch (cardName)
+    {
+      case MFRC522::PICC_TYPE_ISO_14443_4:
+        // Not yet defined
+        return;
+        break;
+      case MFRC522::PICC_TYPE_ISO_18092:
+        // Not yet defined
+        return;
+        break;
+      case MFRC522::PICC_TYPE_MIFARE_MINI:
+        // The Classic Mifare Mini has 20 blocks of 16 bytes each.
+        blocks=19;
+        blocklength=16;
+        break;
+      case MFRC522::PICC_TYPE_MIFARE_UL:
+        // The Mifare Ultralight has 16 blocks of 4 bytes each.
+        blocks=15;
+        blocklength=4;
+        // If this is an NTAG21[356] it will show up here, the UID will be 7 characters
+        // and the first UID byte will be 04h
+        if (mfrc522.uid.uidByte[0] == 04 && mfrc522.uid.size == 7)
+        {
+
+          // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+          for (uint8_t i = 0; i < 6; i++) {
+            key.keyByte[i] = 0xFF;
+          }
+          uint8_t bufferSize = 18;
+          uint8_t buffer[bufferSize];
+          uint8_t block=3;
+          MFRC522::StatusCode status;
+
+          // Read block
+          status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
+          if (status != MFRC522::STATUS_OK) 
+          {
+            return;
+          }
+
+          switch (buffer[2])
+          {
+            case 0x12:
+              // NTAG213
+              blocks=43;
+              break;
+            case 0x3E:
+              // NTAG215
+              blocks=133;
+              break;
+            case 0x6D:
+              // NTAG216
+              blocks=229;
+              break;
+            default:
+              //Unknown NXP tag
+              return;
+          }
+        }
+        break;
+//      case MFRC522::PICC_TYPE_MIFARE_UL_C:
+//        // The Mifare Ultralight C has 48 blocks of 4 bytes each.
+//        blocks=47;
+//        blocklength=4;
+//        break;
+      case MFRC522::PICC_TYPE_MIFARE_PLUS:
+        // No information
+        return;
+        break;
+      case MFRC522::PICC_TYPE_MIFARE_1K:
+        // The Classic Mifare 1K has 64 blocks of 16 bytes each.
+        blocks=63;
+        blocklength=16;
+        break;
+      case MFRC522::PICC_TYPE_MIFARE_4K:
+        // The Classic Mifare 4K has 256 blocks of 16 bytes each.
+        blocks= 255;
+        blocklength=16;  
+        break;
+      default:
+        // We don't know how to handle this card type yet.
+        return;
+    }
+    // See if the uid is in our password array
+    if ( ! getUIDPassword(mfrc522.uid))
+    {
+      if ( ! getPassword(blocks, blocklength))
+      {
+        getUID(mfrc522.uid);
+      }
+    }
+  }
+
+  // Close the card reader 
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
+}
+
+  void setPassword() {
   // Turn the red led on
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -91,16 +248,108 @@ void setPassword() {
   // Compare the two
   if (password == confirm)
   {
-      
+    // Get them to place the chip on the antenna
+    Serial.println("Please place the chip on the reader and wait...");
+    // Look for new cards, and select one if present
+    boolean loop = true;
+    while(loop)
+    {
+      if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
+        // Cancel the loop
+        loop = false;
+        // Get the card type 
+        cardName = mfrc522.PICC_GetType(mfrc522.uid.sak);
+        // Select the Card info
+        switch (cardName)
+        {
+          case MFRC522::PICC_TYPE_ISO_14443_4:
+            // Not yet defined
+            return;
+            break;
+          case MFRC522::PICC_TYPE_ISO_18092:
+            // Not yet defined
+            return;
+            break;
+          case MFRC522::PICC_TYPE_MIFARE_MINI:
+            // The Classic Mifare Mini has 20 blocks of 16 bytes each.
+            blocks=19;
+            blocklength=16;
+            break;
+          case MFRC522::PICC_TYPE_MIFARE_UL:
+            // The Mifare Ultralight has 16 blocks of 4 bytes each.
+            blocks=15;
+            blocklength=4;
+            // If this is an NTAG21[356] it will show up here, the UID will be 7 characters
+            // and the first UID byte will be 04h
+            if (mfrc522.uid.uidByte[0] == 04 && mfrc522.uid.size == 7)
+            {
 
-  // Get them to place the chip on the antenna
+              // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
+              for (uint8_t i = 0; i < 6; i++) {
+                key.keyByte[i] = 0xFF;
+              }
+              uint8_t bufferSize = 18;
+              uint8_t buffer[bufferSize];
+              uint8_t block=3;
+              MFRC522::StatusCode status;
 
-  // Search the chip for space to write the password
+              // Read block
+              status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
+              if (status != MFRC522::STATUS_OK) 
+              {
+                return;
+              }
 
-  // Write the password to the chip
+              switch (buffer[2])
+              {
+                case 0x12:
+                  // NTAG213
+                  blocks=43;
+                  break;
+                case 0x3E:
+                  // NTAG215
+                  blocks=133;
+                  break;
+                case 0x6D:
+                  // NTAG216
+                  blocks=229;
+                  break;
+                default:
+                  //Unknown NXP tag
+                  return;
+              } 
+            }
+            break;
+//          case MFRC522::PICC_TYPE_MIFARE_UL_C:
+//            // The Mifare Ultralight C has 48 blocks of 4 bytes each.
+//            blocks=47;
+//            blocklength=4;
+//            break;
+          case MFRC522::PICC_TYPE_MIFARE_PLUS:
+            // No information
+            return;
+            break;
+          case MFRC522::PICC_TYPE_MIFARE_1K:
+            // The Classic Mifare 1K has 64 blocks of 16 bytes each.
+            blocks=63;
+            blocklength=16;
+            break;
+          case MFRC522::PICC_TYPE_MIFARE_4K:
+            // The Classic Mifare 4K has 256 blocks of 16 bytes each.
+            blocks= 255;
+            blocklength=16;  
+            break;
+          default:
+            // We don't know how to handle this card type yet.
+            return;
+        }
+      }
+    }
+    // Search the chip for space to write the password
 
-  // Read the password
-  
+    // Write the password to the chip
+
+    // Read the password
   }
   else
   {
@@ -253,165 +502,3 @@ int getUID(MFRC522::Uid uid) {
   delay(1000);
   return(true);
 }
-
-void setup() {
-
-  // Initialiase the SPI bus
-  SPI.begin();
-
-  // Initialise the MFRC522 Card Reader
-  mfrc522.PCD_Init();
-  mfrc522.PCD_WriteRegister(MFRC522::RFCfgReg, MFRC522::RxGain_avg);
-
-  // Initialise the dotstar
-  strip.begin();
-  strip.setBrightness(80);
-  strip.setPixelColor(0, 255, 255, 255);
-  strip.show();
-
-  // Initialise the RED LED (for write mode)
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
-
-  // Initialse the Serial console
-  Serial.begin(9600);
-  
-  // Give the serial console a chance to become ready.
-  delay(3000);
-  
-  // Output some instructions to the serialconsole.
-  Serial.println();
-  Serial.println("Enter '1' in order to program a new password onto a chip.");
-  Serial.println();
-
-}
-
-char rxByte = 0;
-
-void loop() {
-
-  // Have the dotstar set to white
-  strip.setPixelColor(0, 255, 255, 255);
-  strip.show();
-  
-
-  //Define some variables;
-  byte blocks;
-  byte blocklength;
-  MFRC522::PICC_Type cardName; 
-
-  // Check the serial console for input
-  if (Serial.available() > 0)
-  {
-     // if we got a 1 jump to the set password routine
-     rxByte = Serial.read();
-
-     if (rxByte == '1')
-     {
-        setPassword();
-     }
-  }
- 
-  // Look for new cards, and select one if present
-  if ( mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial() ) {
-    // Get the card type 
-    cardName = mfrc522.PICC_GetType(mfrc522.uid.sak);
-    // Select the Card info
-    switch (cardName)
-    {
-      case MFRC522::PICC_TYPE_ISO_14443_4:
-        // Not yet defined
-        return;
-        break;
-      case MFRC522::PICC_TYPE_ISO_18092:
-        // Not yet defined
-        return;
-        break;
-      case MFRC522::PICC_TYPE_MIFARE_MINI:
-        // The Classic Mifare Mini has 20 blocks of 16 bytes each.
-        blocks=19;
-        blocklength=16;
-        break;
-      case MFRC522::PICC_TYPE_MIFARE_UL:
-        // The Mifare Ultralight has 16 blocks of 4 bytes each.
-        blocks=15;
-        blocklength=4;
-        // If this is an NTAG21[356] it will show up here, the UID will be 7 characters
-        // and the first UID byte will be 04h
-        if (mfrc522.uid.uidByte[0] == 04 && mfrc522.uid.size == 7)
-        {
-
-          // Prepare key - all keys are set to FFFFFFFFFFFFh at chip delivery from the factory.
-          for (uint8_t i = 0; i < 6; i++) {
-            key.keyByte[i] = 0xFF;
-          }
-          uint8_t bufferSize = 18;
-          uint8_t buffer[bufferSize];
-          uint8_t block=3;
-          MFRC522::StatusCode status;
-
-          // Read block
-          status = mfrc522.MIFARE_Read(block, buffer, &bufferSize);
-          if (status != MFRC522::STATUS_OK) 
-          {
-            return;
-          }
-
-          switch (buffer[2])
-          {
-            case 0x12:
-              // NTAG213
-              blocks=43;
-              break;
-            case 0x3E:
-              // NTAG215
-              blocks=133;
-              break;
-            case 0x6D:
-              // NTAG216
-              blocks=229;
-              break;
-            default:
-              //Unknown NXP tag
-              return;
-          }
-        }
-        break;
-//      case MFRC522::PICC_TYPE_MIFARE_UL_C:
-//        // The Mifare Ultralight C has 48 blocks of 4 bytes each.
-//        blocks=47;
-//        blocklength=4;
-//        break;
-      case MFRC522::PICC_TYPE_MIFARE_PLUS:
-        // No information
-        return;
-        break;
-      case MFRC522::PICC_TYPE_MIFARE_1K:
-        // The Classic Mifare 1K has 64 blocks of 16 bytes each.
-        blocks=63;
-        blocklength=16;
-        break;
-      case MFRC522::PICC_TYPE_MIFARE_4K:
-        // The Classic Mifare 4K has 256 blocks of 16 bytes each.
-        blocks= 255;
-        blocklength=16;  
-        break;
-      default:
-        // We don't know how to handle this card type yet.
-        return;
-    }
-    // See if the uid is in our password array
-    if ( ! getUIDPassword(mfrc522.uid))
-    {
-      if ( ! getPassword(blocks, blocklength))
-      {
-        getUID(mfrc522.uid);
-      }
-    }
-  }
-
-  // Close the card reader 
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
-}
-  
