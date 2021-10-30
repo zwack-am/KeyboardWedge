@@ -36,7 +36,7 @@
 
 // Create the UIDPassword Array
 char * UIDPassword[][2] = {
-  { "DEADBEEF", "Password1"}, 
+  { "UID1DEADBEEF", "Password1"}, 
   { "UID2", "Password2"}, 
   { "UID3", "Password3"},
   { NULL, NULL }
